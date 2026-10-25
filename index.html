@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>ワニVSドラゴン</title>
+<style>
+html,body{
+margin:0;padding:0;width:100%;height:100%;
+overflow:hidden;
+touch-action:none;
+font-family:sans-serif;
+background:#102820;
+color:#fff;
+}
+.screen{
+position:absolute;inset:0;
+display:none;
+flex-direction:column;
+align-items:center;
+justify-content:center;
+padding:16px;
+box-sizing:border-box;
+text-align:center;
+}
+.active{display:flex;}
+button{
+font-size:20px;
+padding:14px 24px;
+border:none;
+border-radius:12px;
+background:#ffb300;
+color:#000;
+min-width:180px;
+}
+#hud{
+width:100%;
+display:flex;
+justify-content:space-between;
+padding:8px 12px;
+box-sizing:border-box;
+font-weight:bold;
+}
+#gameArea{
+position:relative;
+flex:1;
+width:100%;
+max-width:500px;
+background:linear-gradient(#63c7ff,#b8f0ff);
+overflow:hidden;
+border-radius:12px;
+touch-action:none;
+}
+.entity{
+position:absolute;
+user-select:none;
+}
+#player{
+font-size:50px;
+}
+.enemy{
+font-size:40px;
+}
+.bullet{
+position:absolute;
+width:8px;
+height:18px;
+background:yellow;
+border-radius:4px;
+}
+#bossBarWrap{
+width:100%;
+max-width:500px;
+height:18px;
+background:#333;
+border-radius:10px;
+overflow:hidden;
+display:none;
+}
+#bossBar{
+height:100%;
+width:100%;
+background:red;
+}
+.small{
+font-size:14px;
+line-height:1.6;
+}
+</style>
+</head>
+<body>
+
+<div id="startScreen" class="screen active">
+<h1>🐊 ワニVSドラゴン 🐉</h1>
+<div class="small">
+30秒間生き残れ！<br>
+ワニをドラッグして移動。<br>
+自動で弾を発射！<br>
+敵を倒してスコアをかせごう。<br>
+最後にドラゴンボスが出現！
+</div>
+<br>
+<button id="startBtn">スタート</button>
+</div>
+
+<div id="gameScreen" class="screen">
+<div id="hud">
+<div>スコア: <span id="score">0</span></div>
+<div>残り: <span id="time">30</span>秒</div>
+</div>
+<div id="bossBarWrap"><div id="bossBar"></div></div>
+<div id="gameArea">
+<div id="player" class="entity">🐊</div>
+</div>
+</div>
+
+<div id="resultScreen" class="screen">
+<h2>結果発表</h2>
+<div id="finalScore"></div>
+<div id="rank"></div>
+<br>
+<button id="retryBtn">もう一度遊ぶ</button>
+</div>
+
+<script>
+const startScreen=document.getElementById("startScreen");
+const gameScreen=document.getElementById("gameScreen");
+const resultScreen=document.getElementById("resultScreen");
+const gameArea=document.getElementById("gameArea");
+const player=document.getElementById("player");
+
+const scoreEl=document.getElementById("score");
+const timeEl=document.getElementById("time");
+const finalScore=document.getElementById("finalScore");
+const rankEl=document.getElementById("rank");
+
+const bossBarWrap=document.getElementById("bossBarWrap");
+const bossBar=document.getElementById("bossBar");
+
+let score,timeLeft,enemies,bullets,boss;
+let gameLoop,timerLoop,spawnLoop,shootLoop;
+let playing=false;
+let px=150,py=300;
+
+function show(screen){
+[startScreen,gameScreen,resultScreen].forEach(s=>s.classList.remove("active"));
+screen.classList.add("active");
+}
+
+function startGame(){
+show(gameScreen);
+
+score=0;
+timeLeft=30;
+enemies=[];
+bullets=[];
+boss=null;
+playing=true;
+
+scoreEl.textContent=score;
+timeEl.textContent=timeLeft;
+bossBarWrap.style.display="none";
+
+gameArea.innerHTML="";
+gameArea.appendChild(player);
+
+px=gameArea.clientWidth/2-25;
+py=gameArea.clientHeight-90;
+updatePlayer();
+
+timerLoop=setInterval(()=>{
+timeLeft--;
+timeEl.textContent=timeLeft;
+
+if(timeLeft===10 && !boss){
+spawnBoss();
+}
+
+if(timeLeft<=0){
+endGame(boss && boss.hp>0 ? false : true);
+}
+},1000);
+
+spawnLoop=setInterval(()=>{
+if(!boss) spawnEnemy();
+},500);
+
+shootLoop=setInterval(shoot,180);
+
+gameLoop=requestAnimationFrame(update);
+}
+
+function updatePlayer(){
+player.style.left=px+"px";
+player.style.top=py+"px";
+}
+
+function spawnEnemy(){
+const e=document.createElement("div");
+e.className="entity enemy";
+e.textContent=Math.random()<0.5?"🔥":"👾";
+const x=Math.random()*(gameArea.clientWidth-40);
+e.style.left=x+"px";
+e.style.top="-40px";
+gameArea.appendChild(e);
+
+enemies.push({
+el:e,x:x,y:-40,speed:4+Math.random()*4,hp:1
+});
+}
+
+function spawnBoss(){
+bossBarWrap.style.display="block";
+
+const e=document.createElement("div");
+e.className="entity";
+e.textContent="🐉";
+e.style.fontSize="90px";
+gameArea.appendChild(e);
+
+boss={
+el:e,
+x:gameArea.clientWidth/2-45,
+y:30,
+hp:100,
+maxHp:100,
+dir:1
+};
+}
+
+function shoot(){
+if(!playing) return;
+
+const b=document.createElement("div");
+b.className="bullet";
+b.style.left=(px+24)+"px";
+b.style.top=(py-10)+"px";
+gameArea.appendChild(b);
+
+bullets.push({
+el:b,
+x:px+24,
+y:py-10
+});
+}
+
+function update(){
+if(!playing) return;
+
+for(let i=bullets.length-1;i>=0;i--){
+let b=bullets[i];
+b.y-=10;
+b.el.style.top=b.y+"px";
+
+if(b.y<-30){
+b.el.remove();
+bullets.splice(i,1);
+continue;
+}
+
+	for(let j=enemies.length-1;j>=0;j--){
+		let e=enemies[j];
+		if(Math.abs(b.x-e.x)<30 && Math.abs(b.y-e.y)<30){
+			score+=10;
+			scoreEl.textContent=score;
+			e.el.remove();
+			b.el.remove();
+			enemies.splice(j,1);
+			bullets.splice(i,1);
+			break;
+		}
+	}
+
+	if(boss && Math.abs(b.x-boss.x-45)<60 && Math.abs(b.y-boss.y-45)<60){
+		boss.hp--;
+		bossBar.style.width=(boss.hp/boss.maxHp*100)+"%";
+		b.el.remove();
+		bullets.splice(i,1);
+
+		if(boss.hp<=0){
+			score+=1000;
+			scoreEl.textContent=score;
+			boss.el.remove();
+			boss=null;
+			bossBarWrap.style.display="none";
+			endGame(true);
+			return;
+		}
+	}
+}
+
+for(let i=enemies.length-1;i>=0;i--){
+	let e=enemies[i];
+	e.y+=e.speed;
+	e.el.style.top=e.y+"px";
+
+	if(Math.abs(px-e.x)<35 && Math.abs(py-e.y)<35){
+		endGame(false);
+		return;
+	}
+
+	if(e.y>gameArea.clientHeight+50){
+		e.el.remove();
+		enemies.splice(i,1);
+	}
+}
+
+if(boss){
+	boss.x+=boss.dir*4;
+
+	if(boss.x<0 || boss.x>gameArea.clientWidth-90){
+		boss.dir*=-1;
+	}
+
+	boss.el.style.left=boss.x+"px";
+	boss.el.style.top=boss.y+"px";
+
+	if(Math.abs(px-boss.x)<70 && Math.abs(py-boss.y)<70){
+		endGame(false);
+		return;
+	}
+}
+
+gameLoop=requestAnimationFrame(update);
+}
+
+function endGame(clear){
+playing=false;
+
+clearInterval(timerLoop);
+clearInterval(spawnLoop);
+clearInterval(shootLoop);
+cancelAnimationFrame(gameLoop);
+
+finalScore.textContent="最終スコア: "+score;
+
+let rank="C";
+if(score>=300) rank="B";
+if(score>=700) rank="A";
+if(score>=1200) rank="S";
+
+rankEl.textContent=(clear?"ゲームクリア! ":"ゲームオーバー! ")+"ランク: "+rank;
+
+show(resultScreen);
+}
+
+function movePlayer(clientX,clientY){
+const rect=gameArea.getBoundingClientRect();
+px=Math.max(0,Math.min(rect.width-50,clientX-rect.left-25));
+py=Math.max(50,Math.min(rect.height-60,clientY-rect.top-25));
+updatePlayer();
+}
+
+gameArea.addEventListener("pointerdown",e=>movePlayer(e.clientX,e.clientY));
+gameArea.addEventListener("pointermove",e=>{
+if(e.buttons||e.pointerType==="touch"){
+movePlayer(e.clientX,e.clientY);
+}
+});
+
+document.getElementById("startBtn").onclick=startGame;
+document.getElementById("retryBtn").onclick=startGame;
+</script>
+</body>
+</html>
